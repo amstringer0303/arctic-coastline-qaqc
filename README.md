@@ -13,11 +13,10 @@ observed landfast-ice footprint.
   independently zoomable and pannable, alongside a data-driven bathymetry
   summary panel. Labels persist locally (`localStorage`) and export to CSV.
 
-  > Note: the ~200 background PNG tiles (regional/local/satellite × 66
-  > communities, ~200MB total) that `index.html` loads are **not** included
-  > in this repo due to size — the tool will show broken images without
-  > them. Ask for that folder separately if you need to actually run it
-  > elsewhere.
+- **`*.png`** (198 files) — the background map tiles `index.html` loads:
+  `regional_`, `local_`, and `satellite_` prefixed, one of each per
+  community (66 × 3). Keep these in the same folder as `index.html` — the
+  tool references them by relative filename.
 
 - **`community_analysis.csv`** — master per-community data table: ice area,
   extent, coastline complexity, and bathymetry metrics, including:
