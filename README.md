@@ -1,7 +1,7 @@
 # Arctic Coastline Exposure QA/QC
 
 Interactive, click-through classification tool for manually assessing coastal
-exposure/shelter across 66 landfast-ice-monitored Arctic coastal communities,
+exposure/shelter for landfast-ice-monitored Arctic coastal communities,
 paired with data-driven bathymetry computed over each community's actual
 observed landfast-ice footprint.
 
