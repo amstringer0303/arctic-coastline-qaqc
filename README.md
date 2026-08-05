@@ -44,6 +44,4 @@ Tertiles of the 66-community `Mean Depth Under Ice` distribution: Shallow
 landfast-ice grounding/ridging literature (Mahoney et al. 2007, JGR; Mahoney
 2006), independent of this dataset's own distribution.
 
----
-This repository contains unpublished research data. Please do not
-redistribute without permission.
+
