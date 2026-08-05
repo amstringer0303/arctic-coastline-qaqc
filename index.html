@@ -1,0 +1,341 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>Coastline Complexity — Manual Categorization</title>
+<style>
+  * { box-sizing: border-box; }
+  html, body { height: 100%; margin: 0; }
+  body { font-family: -apple-system, Segoe UI, Arial, sans-serif; background: #1c2541; color: #e8ecf5; }
+  #wrap { display: flex; height: 100vh; }
+
+  #viewerCol { flex: 1 1 auto; display: flex; flex-direction: column; padding: 16px; min-width: 0; }
+  #viewerHeader { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 8px; flex-wrap: wrap; gap: 8px; }
+  #commName { font-size: 22px; font-weight: bold; }
+  #modeToggle { display: flex; gap: 6px; }
+  .modeBtn { background: #263257; color: #e8ecf5; border: 1px solid #4a5a80; border-radius: 6px; padding: 7px 14px; cursor: pointer; font-size: 13px; font-weight: bold; }
+  .modeBtn.active { background: #1a6fa8; border-color: #4da6d6; }
+  #zoomControls { font-size: 13px; color: #8898b0; }
+  #zoomControls button { background: #263257; color: #e8ecf5; border: 1px solid #4a5a80; border-radius: 4px; padding: 4px 10px; cursor: pointer; margin-left: 6px; }
+  #zoomControls button:hover { border-color: #4da6d6; }
+  #viewport { flex: 1 1 auto; background: white; border-radius: 8px; overflow: hidden; position: relative; cursor: grab; }
+  #viewport.dragging { cursor: grabbing; }
+  #commImg { position: absolute; top: 0; left: 0; transform-origin: 0 0; user-select: none; -webkit-user-drag: none; }
+  #hint { position: absolute; bottom: 8px; left: 8px; font-size: 11px; background: rgba(255,255,255,0.85); padding: 3px 8px; border-radius: 4px; color: #444; }
+  #scaleLabel { position: absolute; bottom: 8px; right: 8px; font-size: 11px; background: rgba(255,255,255,0.85); padding: 3px 8px; border-radius: 4px; color: #444; font-weight: bold; }
+
+  #sideCol { width: 340px; flex: 0 0 340px; background: #161d38; padding: 18px; overflow-y: auto; }
+  h1 { font-size: 16px; margin: 0 0 4px 0; }
+  #progress { color: #8898b0; font-size: 12.5px; margin-bottom: 8px; }
+  #progressBar { height: 6px; background: #2d3a5f; border-radius: 3px; overflow: hidden; margin-bottom: 16px; }
+  #progressFill { height: 100%; background: #4da6d6; width: 0%; transition: width 0.2s; }
+
+  #depthPanel { background: #1e2a4d; border: 1px solid #3a4a70; border-radius: 8px; padding: 12px; margin-bottom: 14px; }
+  #depthPanel .depthTitle { font-size: 11px; color: #8898b0; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 6px; }
+  #depthPanel .depthCat { font-size: 20px; font-weight: bold; margin-bottom: 4px; }
+  #depthPanel .depthCat.Shallow { color: #e8a33d; }
+  #depthPanel .depthCat.Moderate { color: #4da6d6; }
+  #depthPanel .depthCat.Deep { color: #7a8fff; }
+  #depthPanel .depthDetail { font-size: 12px; color: #b0bbd0; line-height: 1.5; }
+
+  #catGrid { display: flex; flex-direction: column; gap: 8px; margin-bottom: 14px; }
+  .catBtn { padding: 12px; border-radius: 8px; border: 2px solid #4a5a80; background: #263257; color: #e8ecf5;
+            font-size: 14px; cursor: pointer; text-align: left; transition: all 0.15s; }
+  .catBtn:hover { border-color: #4da6d6; }
+  .catBtn.selected { background: #1a6fa8; border-color: #4da6d6; }
+  .catBtn .key { opacity: 0.5; font-size: 11px; margin-right: 6px; }
+  #otherRow { margin-bottom: 14px; }
+  #otherText { width: 100%; padding: 9px; border-radius: 6px; border: 1px solid #4a5a80; background: #263257; color: #e8ecf5; font-size: 13px; }
+  #notesText { width: 100%; padding: 9px; border-radius: 6px; border: 1px solid #4a5a80; background: #263257; color: #e8ecf5; font-size: 13px; min-height: 50px; }
+  #navRow { display: flex; justify-content: space-between; align-items: center; margin-top: 14px; gap: 8px; }
+  .navBtn { flex: 1; padding: 10px; border-radius: 6px; border: none; background: #4da6d6; color: #0a1730; font-weight: bold; cursor: pointer; font-size: 13px; }
+  .navBtn:disabled { background: #3a4a70; color: #6a7aa0; cursor: not-allowed; }
+  #exportBtn { width: 100%; margin-top: 8px; padding: 10px; border-radius: 6px; border: none; background: #2e8b57; color: white; font-weight: bold; cursor: pointer; font-size: 13px; }
+  #jumpList { margin-top: 16px; display: flex; flex-wrap: wrap; gap: 4px; }
+  .jumpDot { width: 12px; height: 12px; border-radius: 50%; background: #3a4a70; cursor: pointer; border: 1px solid #4a5a80; }
+  .jumpDot.done { background: #2e8b57; }
+  .jumpDot.current { outline: 2px solid #4da6d6; }
+  label.small { font-size: 11.5px; color: #8898b0; display: block; margin-bottom: 4px; }
+</style>
+</head>
+<body>
+<div id="wrap">
+  <div id="viewerCol">
+    <div id="viewerHeader">
+      <div id="commName"></div>
+      <div id="modeToggle">
+        <button class="modeBtn" id="modeRegional">Regional (bathymetry)</button>
+        <button class="modeBtn" id="modeLocal">Local (bathymetry, hi-res)</button>
+        <button class="modeBtn" id="modeSatellite">Satellite (imagery)</button>
+      </div>
+      <div id="zoomControls">
+        <span id="zoomPct">100%</span>
+        <button id="zoomOut">−</button>
+        <button id="zoomIn">+</button>
+        <button id="zoomReset">Reset</button>
+      </div>
+    </div>
+    <div id="viewport">
+      <img id="commImg" src="" alt="">
+      <div id="hint">Scroll to zoom · Drag to pan</div>
+      <div id="scaleLabel"></div>
+    </div>
+  </div>
+
+  <div id="sideCol">
+    <h1>Coastline Complexity — Manual Categorization</h1>
+    <div id="progress">Loading...</div>
+    <div id="progressBar"><div id="progressFill"></div></div>
+
+    <div id="depthPanel"></div>
+
+    <div id="catGrid"></div>
+
+    <div id="otherRow" style="display:none;">
+      <label class="small">Not sure — why:</label>
+      <input type="text" id="otherText" placeholder="Type reason for uncertainty...">
+    </div>
+
+    <label class="small">Notes (optional):</label>
+    <textarea id="notesText" placeholder="e.g. borderline case, assessed beyond box, etc."></textarea>
+
+    <div id="navRow">
+      <button class="navBtn" id="prevBtn">&larr; Prev</button>
+      <button class="navBtn" id="nextBtn">Next &rarr;</button>
+    </div>
+    <button id="exportBtn">Export CSV</button>
+
+    <div id="jumpList"></div>
+  </div>
+</div>
+
+<script>
+const communities = ["Akulivik", "Arctic Bay", "Arviat", "Aupaluk", "Cambridge Bay", "Chesterfield Inlet", "Churchill", "Clyde River", "Coral Harbour", "Gambell", "Gjoa Haven", "Golovin", "Grise Fiord", "Hopedale", "Igloolik", "Ilulissat", "Inukjuak", "Iqaluit", "Ivujivik", "Kaktovik", "Kangiqsualujjuaq", "Kangiqsujuaq", "Kangirsuk", "Kimmirut", "Kinngait", "Kivalina", "Kotzebue", "Kugluktuk", "Kuujjuaq", "Kuujjuaraapik", "Makkovik", "Nain", "Nome", "Pangnirtung", "Paulatuk", "Point Hope", "Pond Inlet", "Postville", "Puvirnituq", "Qaanaaq", "Qikiqtarjuaq", "Quaqtaq", "Rankin Inlet", "Resolute", "Rigolet", "Sachs Harbour", "Salluit", "Sanikiluaq", "Sanirajak", "Savoonga", "Shaktoolik", "Shishmaref", "Sisimiut", "Tasiujaq", "Teller", "Tuktoyaktuk", "Uelen", "Ulukhaktok", "Umiujaq", "Unalakleet", "Upernavik", "Utqiagvik", "Uummannaq", "Wainwright", "Wales", "Whale Cove"];
+
+const categories = [
+  "Extremely exposed",
+  "Lightly exposed",
+  "Lightly sheltered",
+  "Extremely sheltered",
+  "Fjords",
+  "Not sure"
+];
+
+// Depth is data-driven, not manually assessed -- computed from GEBCO
+// bathymetry averaged over each community's actual ice-extent zone
+// (Mean Depth Ice Extent), not just guessed from fjord/coastline shape.
+// Thresholds: <20m Shallow, 20-100m Moderate, >=100m Deep (20m matches the
+// shallow-shelf threshold already used elsewhere in this project's Methods).
+const depthData = {"Gambell": {"meanDepthIce": 6.5, "basinDepth": 65.0, "depthCat": "Shallow", "shallowFrac": 0.87}, "Golovin": {"meanDepthIce": 8.8, "basinDepth": 30.0, "depthCat": "Shallow", "shallowFrac": 1.0}, "Kivalina": {"meanDepthIce": 6.8, "basinDepth": 43.0, "depthCat": "Shallow", "shallowFrac": 1.0}, "Kotzebue": {"meanDepthIce": 6.2, "basinDepth": 25.9, "depthCat": "Shallow", "shallowFrac": 1.0}, "Nome": {"meanDepthIce": 13.6, "basinDepth": 37.6, "depthCat": "Shallow", "shallowFrac": 0.94}, "Point Hope": {"meanDepthIce": 8.8, "basinDepth": 70.4, "depthCat": "Shallow", "shallowFrac": 1.0}, "Savoonga": {"meanDepthIce": 3.4, "basinDepth": 54.5, "depthCat": "Shallow", "shallowFrac": 1.0}, "Shaktoolik": {"meanDepthIce": 5.9, "basinDepth": 22.0, "depthCat": "Shallow", "shallowFrac": 1.0}, "Shishmaref": {"meanDepthIce": 3.2, "basinDepth": 32.0, "depthCat": "Shallow", "shallowFrac": 1.0}, "Teller": {"meanDepthIce": 8.7, "basinDepth": 28.9, "depthCat": "Shallow", "shallowFrac": 1.0}, "Uelen": {"meanDepthIce": 16.2, "basinDepth": 104.4, "depthCat": "Moderate", "shallowFrac": 0.61}, "Unalakleet": {"meanDepthIce": 6.6, "basinDepth": 22.0, "depthCat": "Shallow", "shallowFrac": 1.0}, "Wales": {"meanDepthIce": 9.5, "basinDepth": 82.7, "depthCat": "Shallow", "shallowFrac": 0.94}, "Arctic Bay": {"meanDepthIce": 364.0, "basinDepth": 747.6, "depthCat": "Deep", "shallowFrac": 0.03}, "Clyde River": {"meanDepthIce": 179.8, "basinDepth": 478.2, "depthCat": "Deep", "shallowFrac": 0.07}, "Grise Fiord": {"meanDepthIce": 417.5, "basinDepth": 843.5, "depthCat": "Deep", "shallowFrac": 0.1}, "Igloolik": {"meanDepthIce": 44.8, "basinDepth": 165.2, "depthCat": "Moderate", "shallowFrac": 0.36}, "Pangnirtung": {"meanDepthIce": 123.4, "basinDepth": 1051.0, "depthCat": "Deep", "shallowFrac": 0.11}, "Pond Inlet": {"meanDepthIce": 530.6, "basinDepth": 1058.0, "depthCat": "Deep", "shallowFrac": 0.02}, "Qaanaaq": {"meanDepthIce": 516.6, "basinDepth": 953.6, "depthCat": "Deep", "shallowFrac": 0.05}, "Qikiqtarjuaq": {"meanDepthIce": 236.4, "basinDepth": 692.1, "depthCat": "Deep", "shallowFrac": 0.04}, "Sanirajak": {"meanDepthIce": 25.1, "basinDepth": 93.8, "depthCat": "Moderate", "shallowFrac": 0.5}, "Upernavik": {"meanDepthIce": 267.5, "basinDepth": 989.6, "depthCat": "Deep", "shallowFrac": 0.2}, "Akulivik": {"meanDepthIce": 27.6, "basinDepth": 148.2, "depthCat": "Moderate", "shallowFrac": 0.46}, "Arviat": {"meanDepthIce": 11.4, "basinDepth": 98.0, "depthCat": "Shallow", "shallowFrac": 0.83}, "Aupaluk": {"meanDepthIce": 6.5, "basinDepth": 132.5, "depthCat": "Shallow", "shallowFrac": 0.91}, "Chesterfield Inlet": {"meanDepthIce": 25.6, "basinDepth": 118.2, "depthCat": "Moderate", "shallowFrac": 0.53}, "Churchill": {"meanDepthIce": 5.9, "basinDepth": 67.0, "depthCat": "Shallow", "shallowFrac": 1.0}, "Coral Harbour": {"meanDepthIce": 18.5, "basinDepth": 69.0, "depthCat": "Moderate", "shallowFrac": 0.58}, "Inukjuak": {"meanDepthIce": 17.4, "basinDepth": 141.7, "depthCat": "Moderate", "shallowFrac": 0.65}, "Iqaluit": {"meanDepthIce": 63.3, "basinDepth": 343.5, "depthCat": "Deep", "shallowFrac": 0.24}, "Ivujivik": {"meanDepthIce": 147.8, "basinDepth": 525.8, "depthCat": "Deep", "shallowFrac": 0.23}, "Kangiqsualujjuaq": {"meanDepthIce": 3.4, "basinDepth": 111.0, "depthCat": "Shallow", "shallowFrac": 0.95}, "Kangiqsujuaq": {"meanDepthIce": 15.4, "basinDepth": 280.1, "depthCat": "Shallow", "shallowFrac": 0.78}, "Kangirsuk": {"meanDepthIce": 14.3, "basinDepth": 121.1, "depthCat": "Shallow", "shallowFrac": 0.77}, "Kimmirut": {"meanDepthIce": 54.1, "basinDepth": 323.1, "depthCat": "Deep", "shallowFrac": 0.26}, "Kinngait": {"meanDepthIce": 19.3, "basinDepth": 439.3, "depthCat": "Moderate", "shallowFrac": 0.66}, "Kuujjuaq": {"meanDepthIce": 1.0, "basinDepth": 43.8, "depthCat": "Shallow", "shallowFrac": 1.0}, "Kuujjuaraapik": {"meanDepthIce": 79.3, "basinDepth": 194.9, "depthCat": "Deep", "shallowFrac": 0.08}, "Puvirnituq": {"meanDepthIce": 12.6, "basinDepth": 62.4, "depthCat": "Shallow", "shallowFrac": 0.79}, "Quaqtaq": {"meanDepthIce": 52.3, "basinDepth": 390.6, "depthCat": "Deep", "shallowFrac": 0.41}, "Rankin Inlet": {"meanDepthIce": 17.4, "basinDepth": 58.5, "depthCat": "Moderate", "shallowFrac": 0.61}, "Salluit": {"meanDepthIce": 34.8, "basinDepth": 344.7, "depthCat": "Moderate", "shallowFrac": 0.52}, "Sanikiluaq": {"meanDepthIce": 26.2, "basinDepth": 117.7, "depthCat": "Moderate", "shallowFrac": 0.4}, "Tasiujaq": {"meanDepthIce": 23.9, "basinDepth": 111.2, "depthCat": "Moderate", "shallowFrac": 0.56}, "Umiujaq": {"meanDepthIce": 74.8, "basinDepth": 163.6, "depthCat": "Deep", "shallowFrac": 0.07}, "Whale Cove": {"meanDepthIce": 16.8, "basinDepth": 93.1, "depthCat": "Moderate", "shallowFrac": 0.68}, "Hopedale": {"meanDepthIce": 33.4, "basinDepth": 574.9, "depthCat": "Moderate", "shallowFrac": 0.46}, "Makkovik": {"meanDepthIce": 35.9, "basinDepth": 904.2, "depthCat": "Moderate", "shallowFrac": 0.38}, "Nain": {"meanDepthIce": 40.3, "basinDepth": 221.8, "depthCat": "Moderate", "shallowFrac": 0.3}, "Postville": {"meanDepthIce": 47.9, "basinDepth": 173.0, "depthCat": "Deep", "shallowFrac": 0.24}, "Rigolet": {"meanDepthIce": 58.6, "basinDepth": 282.0, "depthCat": "Deep", "shallowFrac": 0.4}, "Ilulissat": {"meanDepthIce": 189.5, "basinDepth": 786.2, "depthCat": "Deep", "shallowFrac": 0.33}, "Sisimiut": {"meanDepthIce": 127.6, "basinDepth": 534.4, "depthCat": "Deep", "shallowFrac": 0.27}, "Uummannaq": {"meanDepthIce": 671.0, "basinDepth": 1467.9, "depthCat": "Deep", "shallowFrac": 0.01}, "Cambridge Bay": {"meanDepthIce": 46.5, "basinDepth": 108.0, "depthCat": "Moderate", "shallowFrac": 0.24}, "Gjoa Haven": {"meanDepthIce": 23.7, "basinDepth": 115.0, "depthCat": "Moderate", "shallowFrac": 0.4}, "Kaktovik": {"meanDepthIce": 12.8, "basinDepth": 171.9, "depthCat": "Shallow", "shallowFrac": 0.77}, "Kugluktuk": {"meanDepthIce": 51.5, "basinDepth": 221.5, "depthCat": "Deep", "shallowFrac": 0.28}, "Paulatuk": {"meanDepthIce": 40.5, "basinDepth": 156.6, "depthCat": "Moderate", "shallowFrac": 0.28}, "Resolute": {"meanDepthIce": 103.9, "basinDepth": 256.0, "depthCat": "Deep", "shallowFrac": 0.09}, "Sachs Harbour": {"meanDepthIce": 36.1, "basinDepth": 391.1, "depthCat": "Moderate", "shallowFrac": 0.47}, "Tuktoyaktuk": {"meanDepthIce": 3.6, "basinDepth": 26.2, "depthCat": "Shallow", "shallowFrac": 1.0}, "Ulukhaktok": {"meanDepthIce": 182.7, "basinDepth": 440.2, "depthCat": "Deep", "shallowFrac": 0.1}, "Utqiagvik": {"meanDepthIce": 15.5, "basinDepth": 274.5, "depthCat": "Moderate", "shallowFrac": 0.67}, "Wainwright": {"meanDepthIce": 26.7, "basinDepth": 109.5, "depthCat": "Moderate", "shallowFrac": 0.43}};
+
+const STORAGE_KEY = "coastline_qaqc_labels_v3"; // bumped: category set replaced (exposed/sheltered spectrum + Fjords + Not sure)
+let current = 0;
+let mode = "regional"; // "regional" or "local"
+let data = JSON.parse(localStorage.getItem(STORAGE_KEY) || "{}");
+
+// Each mode has its own known px/km scale (community always at image center
+// in both), so the default view can be set directly in km for either.
+const MODES = {
+  regional:  { prefix: "regional_",  pxPerKm: 5,  defaultViewKm: 100 },
+  local:     { prefix: "local_",     pxPerKm: 30, defaultViewKm: 25  },
+  satellite: { prefix: "satellite_", pxPerKm: 6,  defaultViewKm: 100 }, // now covers the same wide extent as regional -- zooms out just as far; starts at 100km like regional so it isn't pre-blurred by over-zooming on load
+};
+
+let zoom = 1, panX = 0, panY = 0;
+let dragging = false, dragStartX = 0, dragStartY = 0, panStartX = 0, panStartY = 0;
+const viewport = document.getElementById("viewport");
+const img = document.getElementById("commImg");
+
+function applyTransform() {
+  img.style.transform = `translate(${panX}px, ${panY}px) scale(${zoom})`;
+  document.getElementById("zoomPct").textContent = Math.round(zoom * 100) + "%";
+  const m = MODES[mode];
+  const viewKm = Math.min(viewport.clientWidth, viewport.clientHeight) / (zoom * m.pxPerKm);
+  document.getElementById("scaleLabel").textContent = `~${viewKm.toFixed(1)} km across`;
+}
+
+viewport.addEventListener("wheel", (e) => {
+  e.preventDefault();
+  const rect = viewport.getBoundingClientRect();
+  const mx = e.clientX - rect.left, my = e.clientY - rect.top;
+  const oldZoom = zoom;
+  const delta = -e.deltaY * 0.0015;
+  zoom = Math.min(10, Math.max(0.03, zoom * (1 + delta)));
+  panX = mx - ((mx - panX) / oldZoom) * zoom;
+  panY = my - ((my - panY) / oldZoom) * zoom;
+  applyTransform();
+}, { passive: false });
+
+viewport.addEventListener("mousedown", (e) => {
+  dragging = true;
+  viewport.classList.add("dragging");
+  dragStartX = e.clientX; dragStartY = e.clientY;
+  panStartX = panX; panStartY = panY;
+});
+window.addEventListener("mousemove", (e) => {
+  if (!dragging) return;
+  panX = panStartX + (e.clientX - dragStartX);
+  panY = panStartY + (e.clientY - dragStartY);
+  applyTransform();
+});
+window.addEventListener("mouseup", () => { dragging = false; viewport.classList.remove("dragging"); });
+
+document.getElementById("zoomIn").onclick = () => { zoom = Math.min(10, zoom * 1.4); applyTransform(); };
+document.getElementById("zoomOut").onclick = () => { zoom = Math.max(0.03, zoom / 1.4); applyTransform(); };
+document.getElementById("zoomReset").onclick = () => fitToViewport();
+
+function fitToViewport() {
+  const vw = viewport.clientWidth, vh = viewport.clientHeight;
+  if (!img.naturalWidth) return;
+  const m = MODES[mode];
+  const targetPx = Math.min(vw, vh);
+  zoom = targetPx / (m.defaultViewKm * m.pxPerKm);
+  zoom = Math.max(0.03, Math.min(zoom, 10));
+  panX = vw / 2 - (img.naturalWidth / 2) * zoom;
+  panY = vh / 2 - (img.naturalHeight / 2) * zoom;
+  applyTransform();
+}
+
+function pngName(name) {
+  return MODES[mode].prefix + name.replace(/ /g, "_").replace(/\//g, "-") + ".png";
+}
+
+function save() {
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
+}
+
+function setMode(newMode) {
+  mode = newMode;
+  document.getElementById("modeRegional").classList.toggle("active", mode === "regional");
+  document.getElementById("modeLocal").classList.toggle("active", mode === "local");
+  document.getElementById("modeSatellite").classList.toggle("active", mode === "satellite");
+  loadImage();
+}
+document.getElementById("modeRegional").onclick = () => setMode("regional");
+document.getElementById("modeLocal").onclick = () => setMode("local");
+document.getElementById("modeSatellite").onclick = () => setMode("satellite");
+
+function loadImage() {
+  const name = communities[current];
+  img.src = pngName(name);
+  img.onload = () => {
+    img.style.width = img.naturalWidth + "px";
+    img.style.height = img.naturalHeight + "px";
+    fitToViewport();
+  };
+}
+
+function render() {
+  const name = communities[current];
+  loadImage();
+  document.getElementById("commName").textContent = name;
+
+  const dd = depthData[name];
+  if (dd) {
+    document.getElementById("depthPanel").innerHTML = `
+      <div class="depthTitle">Bathymetry under ice zone (GEBCO)</div>
+      <div class="depthCat ${dd.depthCat}">${dd.depthCat}</div>
+      <div class="depthDetail">
+        Mean depth under ice: <b>${dd.meanDepthIce} m</b><br>
+        Basin depth: <b>${dd.basinDepth} m</b><br>
+        Fraction of ice zone &lt;20m: <b>${dd.shallowFrac}</b><br>
+        <span style="opacity:0.65;font-size:11px;">Category = tertile of the 66-community mean-depth distribution (cutoffs 15.5m / 47.0m), not a fixed physical threshold.</span>
+      </div>`;
+  } else {
+    document.getElementById("depthPanel").innerHTML = `<div class="depthDetail">No depth data</div>`;
+  }
+
+  const entry = data[name] || {};
+  const grid = document.getElementById("catGrid");
+  grid.innerHTML = "";
+  categories.forEach((cat, i) => {
+    const btn = document.createElement("button");
+    btn.className = "catBtn" + (entry.category === cat ? " selected" : "");
+    btn.innerHTML = `<span class="key">${i+1}</span>${cat}`;
+    btn.onclick = () => selectCategory(cat);
+    grid.appendChild(btn);
+  });
+
+  document.getElementById("otherRow").style.display = entry.category === "Not sure" ? "block" : "none";
+  document.getElementById("otherText").value = entry.otherText || "";
+  document.getElementById("notesText").value = entry.notes || "";
+
+  document.getElementById("prevBtn").disabled = current === 0;
+  document.getElementById("nextBtn").textContent = current === communities.length - 1 ? "Finish" : "Next →";
+
+  const doneCount = communities.filter(c => data[c] && data[c].category).length;
+  document.getElementById("progress").textContent = `Community ${current+1} of ${communities.length}  —  ${doneCount}/${communities.length} labeled`;
+  document.getElementById("progressFill").style.width = (doneCount / communities.length * 100) + "%";
+
+  renderJumpList();
+}
+
+function renderJumpList() {
+  const box = document.getElementById("jumpList");
+  box.innerHTML = "";
+  communities.forEach((c, i) => {
+    const dot = document.createElement("div");
+    dot.className = "jumpDot" + (data[c] && data[c].category ? " done" : "") + (i === current ? " current" : "");
+    dot.title = c;
+    dot.onclick = () => { current = i; render(); };
+    box.appendChild(dot);
+  });
+}
+
+function selectCategory(cat) {
+  const name = communities[current];
+  if (!data[name]) data[name] = {};
+  data[name].category = cat;
+  save();
+  render();
+}
+
+document.getElementById("otherText").oninput = (e) => {
+  const name = communities[current];
+  if (!data[name]) data[name] = {};
+  data[name].otherText = e.target.value;
+  save();
+};
+document.getElementById("notesText").oninput = (e) => {
+  const name = communities[current];
+  if (!data[name]) data[name] = {};
+  data[name].notes = e.target.value;
+  save();
+};
+
+document.getElementById("prevBtn").onclick = () => { if (current > 0) { current--; render(); } };
+document.getElementById("nextBtn").onclick = () => { if (current < communities.length - 1) { current++; render(); } };
+
+document.addEventListener("keydown", (e) => {
+  if (e.target.tagName === "INPUT" || e.target.tagName === "TEXTAREA") return;
+  if (e.key >= "1" && e.key <= "6") selectCategory(categories[parseInt(e.key) - 1]);
+  if (e.key === "ArrowRight") document.getElementById("nextBtn").click();
+  if (e.key === "ArrowLeft") document.getElementById("prevBtn").click();
+  if (e.key === "r" || e.key === "R") setMode("regional");
+  if (e.key === "l" || e.key === "L") setMode("local");
+  if (e.key === "s" || e.key === "S") setMode("satellite");
+});
+
+document.getElementById("exportBtn").onclick = () => {
+  let csv = "Community,Exposure Category,Not Sure Reason,Depth Category,Mean Depth Under Ice (m),Basin Depth (m),Shallow Fraction,Notes\n";
+  communities.forEach(name => {
+    const e = data[name] || {};
+    const dd = depthData[name] || {};
+    const esc = (s) => `"${(s === undefined || s === null ? "" : s).toString().replace(/"/g, '""')}"`;
+    csv += `${esc(name)},${esc(e.category)},${esc(e.otherText)},${esc(dd.depthCat)},${esc(dd.meanDepthIce)},${esc(dd.basinDepth)},${esc(dd.shallowFrac)},${esc(e.notes)}\n`;
+  });
+  const blob = new Blob([csv], { type: "text/csv" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = "coastline_manual_labels.csv";
+  a.click();
+  URL.revokeObjectURL(url);
+};
+
+window.addEventListener("resize", fitToViewport);
+setMode("regional");
+render();
+</script>
+</body>
+</html>
