@@ -51,10 +51,14 @@
   .navBtn { flex: 1; padding: 10px; border-radius: 6px; border: none; background: #4da6d6; color: #0a1730; font-weight: bold; cursor: pointer; font-size: 13px; }
   .navBtn:disabled { background: #3a4a70; color: #6a7aa0; cursor: not-allowed; }
   #exportBtn { width: 100%; margin-top: 8px; padding: 10px; border-radius: 6px; border: none; background: #2e8b57; color: white; font-weight: bold; cursor: pointer; font-size: 13px; }
+  #reviewBtn { width: 100%; margin-top: 8px; padding: 10px; border-radius: 6px; border: 1px solid #e6231e; background: #3a1a1a; color: #ff8a80; font-weight: bold; cursor: pointer; font-size: 13px; }
+  #reviewBtn.active { background: #e6231e; color: white; }
+  #importBtn { width: 100%; margin-top: 8px; padding: 10px; border-radius: 6px; border: 1px solid #4da6d6; background: #263257; color: #4da6d6; font-weight: bold; cursor: pointer; font-size: 13px; }
   #jumpList { margin-top: 16px; display: flex; flex-wrap: wrap; gap: 4px; }
   .jumpDot { width: 12px; height: 12px; border-radius: 50%; background: #3a4a70; cursor: pointer; border: 1px solid #4a5a80; }
   .jumpDot.done { background: #2e8b57; }
   .jumpDot.current { outline: 2px solid #4da6d6; }
+  .jumpDot.notSure { border: 2px solid #e6231e; }
   label.small { font-size: 11.5px; color: #8898b0; display: block; margin-bottom: 4px; }
 </style>
 </head>
@@ -103,7 +107,10 @@
       <button class="navBtn" id="prevBtn">&larr; Prev</button>
       <button class="navBtn" id="nextBtn">Next &rarr;</button>
     </div>
+    <button id="reviewBtn">Review "Not sure" only</button>
     <button id="exportBtn">Export CSV</button>
+    <button id="importBtn">Import CSV (restore progress)</button>
+    <input type="file" id="importFile" accept=".csv" style="display:none;">
 
     <div id="jumpList"></div>
   </div>
@@ -132,6 +139,14 @@ const STORAGE_KEY = "coastline_qaqc_labels_v3"; // bumped: category set replaced
 let current = 0;
 let mode = "regional"; // "regional" or "local"
 let data = JSON.parse(localStorage.getItem(STORAGE_KEY) || "{}");
+let reviewMode = false; // when true, Prev/Next only step through "Not sure" communities
+
+function notSureIndices() {
+  return communities
+    .map((name, i) => ({ name, i }))
+    .filter(({ name }) => data[name] && data[name].category === "Not sure")
+    .map(({ i }) => i);
+}
 
 // Each mode has its own known px/km scale (community always at image center
 // in both), so the default view can be set directly in km for either.
@@ -260,12 +275,27 @@ function render() {
   document.getElementById("otherText").value = entry.otherText || "";
   document.getElementById("notesText").value = entry.notes || "";
 
-  document.getElementById("prevBtn").disabled = current === 0;
-  document.getElementById("nextBtn").textContent = current === communities.length - 1 ? "Finish" : "Next →";
-
   const doneCount = communities.filter(c => data[c] && data[c].category).length;
-  document.getElementById("progress").textContent = `Community ${current+1} of ${communities.length}  —  ${doneCount}/${communities.length} labeled`;
-  document.getElementById("progressFill").style.width = (doneCount / communities.length * 100) + "%";
+
+  if (reviewMode) {
+    const ns = notSureIndices();
+    const pos = ns.indexOf(current);
+    document.getElementById("prevBtn").disabled = pos <= 0;
+    document.getElementById("nextBtn").textContent = pos === ns.length - 1 ? "Finish review" : "Next →";
+    document.getElementById("progress").textContent =
+      ns.length === 0 ? `No "Not sure" communities left` : `Reviewing "Not sure": ${pos + 1} of ${ns.length}`;
+    document.getElementById("progressFill").style.width = (ns.length ? (pos + 1) / ns.length * 100 : 100) + "%";
+  } else {
+    document.getElementById("prevBtn").disabled = current === 0;
+    document.getElementById("nextBtn").textContent = current === communities.length - 1 ? "Finish" : "Next →";
+    document.getElementById("progress").textContent = `Community ${current+1} of ${communities.length}  —  ${doneCount}/${communities.length} labeled`;
+    document.getElementById("progressFill").style.width = (doneCount / communities.length * 100) + "%";
+  }
+
+  const reviewBtn = document.getElementById("reviewBtn");
+  const nsCount = notSureIndices().length;
+  reviewBtn.textContent = reviewMode ? `Exit review (${nsCount} left)` : `Review "Not sure" only (${nsCount})`;
+  reviewBtn.classList.toggle("active", reviewMode);
 
   renderJumpList();
 }
@@ -274,9 +304,11 @@ function renderJumpList() {
   const box = document.getElementById("jumpList");
   box.innerHTML = "";
   communities.forEach((c, i) => {
+    const isNotSure = data[c] && data[c].category === "Not sure";
     const dot = document.createElement("div");
-    dot.className = "jumpDot" + (data[c] && data[c].category ? " done" : "") + (i === current ? " current" : "");
-    dot.title = c;
+    dot.className = "jumpDot" + (data[c] && data[c].category ? " done" : "")
+      + (i === current ? " current" : "") + (isNotSure ? " notSure" : "");
+    dot.title = c + (isNotSure ? " (Not sure)" : "");
     dot.onclick = () => { current = i; render(); };
     box.appendChild(dot);
   });
@@ -284,9 +316,20 @@ function renderJumpList() {
 
 function selectCategory(cat) {
   const name = communities[current];
+  const wasNotSure = data[name] && data[name].category === "Not sure";
   if (!data[name]) data[name] = {};
   data[name].category = cat;
   save();
+  // In review mode, re-labeling a community away from "Not sure" removes it
+  // from the review list -- jump straight to the next one still needing review.
+  if (reviewMode && wasNotSure && cat !== "Not sure") {
+    const ns = notSureIndices();
+    if (ns.length > 0) {
+      current = ns.find(i => i > current) ?? ns[0];
+    } else {
+      reviewMode = false;
+    }
+  }
   render();
 }
 
@@ -303,8 +346,32 @@ document.getElementById("notesText").oninput = (e) => {
   save();
 };
 
-document.getElementById("prevBtn").onclick = () => { if (current > 0) { current--; render(); } };
-document.getElementById("nextBtn").onclick = () => { if (current < communities.length - 1) { current++; render(); } };
+document.getElementById("prevBtn").onclick = () => {
+  if (reviewMode) {
+    const ns = notSureIndices();
+    const pos = ns.indexOf(current);
+    if (pos > 0) { current = ns[pos - 1]; render(); }
+  } else if (current > 0) {
+    current--; render();
+  }
+};
+document.getElementById("nextBtn").onclick = () => {
+  if (reviewMode) {
+    const ns = notSureIndices();
+    const pos = ns.indexOf(current);
+    if (pos !== -1 && pos < ns.length - 1) { current = ns[pos + 1]; render(); }
+  } else if (current < communities.length - 1) {
+    current++; render();
+  }
+};
+document.getElementById("reviewBtn").onclick = () => {
+  reviewMode = !reviewMode;
+  if (reviewMode) {
+    const ns = notSureIndices();
+    if (ns.length > 0) current = ns[0];
+  }
+  render();
+};
 
 document.addEventListener("keydown", (e) => {
   if (e.target.tagName === "INPUT" || e.target.tagName === "TEXTAREA") return;
@@ -331,6 +398,65 @@ document.getElementById("exportBtn").onclick = () => {
   a.download = "coastline_manual_labels.csv";
   a.click();
   URL.revokeObjectURL(url);
+};
+
+// Minimal CSV line parser -- handles quoted fields, "" escaped quotes, and
+// commas inside quotes (matches the format exportBtn writes).
+function parseCsvLine(line) {
+  const out = [];
+  let field = "", inQuotes = false;
+  for (let i = 0; i < line.length; i++) {
+    const c = line[i];
+    if (inQuotes) {
+      if (c === '"' && line[i + 1] === '"') { field += '"'; i++; }
+      else if (c === '"') { inQuotes = false; }
+      else { field += c; }
+    } else {
+      if (c === '"') inQuotes = true;
+      else if (c === ',') { out.push(field); field = ""; }
+      else field += c;
+    }
+  }
+  out.push(field);
+  return out;
+}
+
+document.getElementById("importBtn").onclick = () => document.getElementById("importFile").click();
+document.getElementById("importFile").onchange = (e) => {
+  const file = e.target.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = () => {
+    const lines = reader.result.split(/\r?\n/).filter(l => l.trim().length > 0);
+    const header = parseCsvLine(lines[0]);
+    const idx = {
+      community: header.indexOf("Community"),
+      category: header.indexOf("Exposure Category"),
+      otherText: header.indexOf("Not Sure Reason"),
+      notes: header.indexOf("Notes"),
+    };
+    if (idx.community === -1 || idx.category === -1) {
+      alert("This doesn't look like a coastline_manual_labels.csv export -- missing expected columns.");
+      return;
+    }
+    let n = 0;
+    for (let i = 1; i < lines.length; i++) {
+      const row = parseCsvLine(lines[i]);
+      const name = row[idx.community];
+      if (!name || !communities.includes(name)) continue;
+      const category = row[idx.category];
+      if (!data[name]) data[name] = {};
+      if (category) data[name].category = category;
+      if (idx.otherText !== -1 && row[idx.otherText]) data[name].otherText = row[idx.otherText];
+      if (idx.notes !== -1 && row[idx.notes]) data[name].notes = row[idx.notes];
+      n++;
+    }
+    save();
+    render();
+    alert(`Imported labels for ${n} communities.`);
+  };
+  reader.readAsText(file);
+  e.target.value = ""; // allow re-importing the same file later
 };
 
 window.addEventListener("resize", fitToViewport);
