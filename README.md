@@ -18,6 +18,13 @@ observed landfast-ice footprint.
   community (66 × 3). Keep these in the same folder as `index.html` — the
   tool references them by relative filename.
 
+- **`coastline_manual_labels.csv`** — the completed manual exposure
+  classification, all 66 communities (final pass, no "Not sure" remaining).
+  Columns: `Exposure Category`, `Not Sure Reason` (kept for any future
+  re-review), `Depth Category`/`Mean Depth Under Ice (m)`/`Basin Depth (m)`/
+  `Shallow Fraction` (data-driven, carried over from `community_analysis.csv`
+  for reference), `Notes`.
+
 - **`community_analysis.csv`** — master per-community data table: ice area,
   extent, coastline complexity, and bathymetry metrics, including:
   - `Mean Depth Under Ice (m)`, `Frac <20m Under Ice`, `Frac <2m Under Ice`,
@@ -35,6 +42,10 @@ observed landfast-ice footprint.
 
 Extremely exposed · Lightly exposed · Lightly sheltered · Extremely
 sheltered · Fjords · Not sure
+
+Final counts (`coastline_manual_labels.csv`): Lightly sheltered 24 ·
+Lightly exposed 14 · Extremely exposed 12 · Extremely sheltered 11 ·
+Fjords 5 · Not sure 0 (fully reviewed).
 
 ## Depth categories (data-driven, in `community_analysis.csv` / `index.html`)
 
